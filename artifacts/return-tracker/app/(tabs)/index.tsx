@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -14,11 +14,19 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { PurchaseCard } from "@/components/PurchaseCard";
+import { ReturnCalendar } from "@/components/ReturnCalendar";
 import { SectionHeader } from "@/components/SectionHeader";
-import { Purchase, usePurchases } from "@/context/PurchaseContext";
+import { usePurchases } from "@/context/PurchaseContext";
 import { useColors } from "@/hooks/useColors";
 
 type FilterType = "all" | "active" | "done";
+
+function toLocalDateString(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
 
 export default function HomeScreen() {
   const colors = useColors();
@@ -26,16 +34,28 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { purchases, loading } = usePurchases();
   const [filter, setFilter] = useState<FilterType>("active");
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
-  const filteredPurchases =
+  const baseFiltered = useMemo(() =>
     filter === "all"
       ? purchases
       : filter === "active"
       ? purchases.filter((p) => p.status === "active")
-      : purchases.filter((p) => p.status !== "active");
+      : purchases.filter((p) => p.status !== "active"),
+    [purchases, filter]
+  );
 
-  const urgentCount = purchases.filter((p) => {
-    if (p.status !== "active") return false;
+  const filteredPurchases = useMemo(() => {
+    if (!selectedDate) return baseFiltered;
+    return baseFiltered.filter((p) => {
+      const deadline = new Date(p.returnDeadline);
+      return toLocalDateString(deadline) === selectedDate;
+    });
+  }, [baseFiltered, selectedDate]);
+
+  const activePurchases = purchases.filter((p) => p.status === "active");
+
+  const urgentCount = activePurchases.filter((p) => {
     const deadline = new Date(p.returnDeadline);
     const daysLeft = Math.ceil(
       (deadline.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
@@ -46,19 +66,12 @@ export default function HomeScreen() {
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
 
+  function handleSelectDate(date: string | null) {
+    setSelectedDate(date);
+  }
+
   const renderHeader = () => (
     <View>
-      {urgentCount > 0 && (
-        <View
-          style={[styles.alertBanner, { backgroundColor: colors.urgent, borderColor: colors.urgentBorder }]}
-        >
-          <Feather name="alert-circle" size={16} color={colors.urgentForeground} />
-          <Text style={[styles.alertText, { color: colors.urgentForeground }]}>
-            {urgentCount} {urgentCount === 1 ? "purchase" : "purchases"} expire within 3 days
-          </Text>
-        </View>
-      )}
-
       <View style={styles.filters}>
         {(["active", "all", "done"] as FilterType[]).map((f) => (
           <TouchableOpacity
@@ -73,16 +86,13 @@ export default function HomeScreen() {
             onPress={() => {
               if (Platform.OS !== "web") Haptics.selectionAsync();
               setFilter(f);
+              setSelectedDate(null);
             }}
             activeOpacity={0.7}
           >
             <Text
               style={[
                 styles.filterText,
-                {
-                  color:
-                    filter === f ? colors.primaryForeground : colors.secondary,
-                },
                 { color: filter === f ? "#fff" : colors.primary },
               ]}
             >
@@ -92,9 +102,57 @@ export default function HomeScreen() {
         ))}
       </View>
 
+      <ReturnCalendar
+        purchases={filter === "done" ? [] : activePurchases}
+        selectedDate={selectedDate}
+        onSelectDate={handleSelectDate}
+      />
+
+      {selectedDate && (
+        <View style={styles.dateFilterRow}>
+          <Text style={[styles.dateFilterLabel, { color: colors.mutedForeground }]}>
+            {filteredPurchases.length === 0
+              ? "No returns due on this day"
+              : `${filteredPurchases.length} return${filteredPurchases.length !== 1 ? "s" : ""} due`}
+          </Text>
+          <TouchableOpacity
+            onPress={() => setSelectedDate(null)}
+            activeOpacity={0.7}
+            style={[styles.clearDateBtn, { backgroundColor: colors.muted }]}
+          >
+            <Feather name="x" size={12} color={colors.mutedForeground} />
+            <Text style={[styles.clearDateText, { color: colors.mutedForeground }]}>
+              Clear
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {urgentCount > 0 && !selectedDate && (
+        <View
+          style={[
+            styles.alertBanner,
+            { backgroundColor: colors.urgent, borderColor: colors.urgentBorder },
+          ]}
+        >
+          <Feather name="alert-circle" size={15} color={colors.urgentForeground} />
+          <Text style={[styles.alertText, { color: colors.urgentForeground }]}>
+            {urgentCount} {urgentCount === 1 ? "purchase expires" : "purchases expire"} within 3 days
+          </Text>
+        </View>
+      )}
+
       {filteredPurchases.length > 0 && (
         <SectionHeader
-          title={filter === "active" ? "Active Purchases" : filter === "done" ? "Completed" : "All Purchases"}
+          title={
+            selectedDate
+              ? "Due This Day"
+              : filter === "active"
+              ? "Active Purchases"
+              : filter === "done"
+              ? "Completed"
+              : "All Purchases"
+          }
           count={filteredPurchases.length}
         />
       )}
@@ -103,12 +161,22 @@ export default function HomeScreen() {
 
   const renderEmpty = () => (
     <View style={styles.empty}>
-      <Feather name="shopping-bag" size={48} color={colors.mutedForeground} />
+      <Feather
+        name={selectedDate ? "calendar" : "shopping-bag"}
+        size={40}
+        color={colors.mutedForeground}
+      />
       <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-        {filter === "active" ? "No active purchases" : "No purchases yet"}
+        {selectedDate
+          ? "Nothing due this day"
+          : filter === "active"
+          ? "No active purchases"
+          : "No purchases yet"}
       </Text>
       <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-        {filter === "active"
+        {selectedDate
+          ? "Tap a highlighted date to see returns due"
+          : filter === "active"
           ? "All your purchases have been resolved"
           : "Tap + to track your first purchase"}
       </Text>
@@ -120,11 +188,7 @@ export default function HomeScreen() {
       <View
         style={[
           styles.topBar,
-          {
-            paddingTop: topPadding + 12,
-            backgroundColor: colors.background,
-            borderBottomColor: colors.border,
-          },
+          { paddingTop: topPadding + 12, backgroundColor: colors.background },
         ]}
       >
         <Text style={[styles.title, { color: colors.foreground }]}>
@@ -133,7 +197,8 @@ export default function HomeScreen() {
         <TouchableOpacity
           style={[styles.addButton, { backgroundColor: colors.primary }]}
           onPress={() => {
-            if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            if (Platform.OS !== "web")
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             router.push("/add-purchase");
           }}
           activeOpacity={0.8}
@@ -173,8 +238,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingBottom: 12,
-    borderBottomWidth: 0,
+    paddingBottom: 10,
   },
   title: {
     fontSize: 32,
@@ -187,26 +251,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  alertBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    margin: 16,
-    marginBottom: 0,
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  alertText: {
-    fontSize: 13,
-    fontFamily: "Inter_500Medium",
-    flex: 1,
-  },
   filters: {
     flexDirection: "row",
     gap: 8,
     paddingHorizontal: 16,
-    paddingTop: 16,
+    paddingTop: 8,
     paddingBottom: 4,
   },
   filterChip: {
@@ -218,6 +267,45 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: "Inter_600SemiBold",
   },
+  dateFilterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 2,
+  },
+  dateFilterLabel: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+  },
+  clearDateBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  clearDateText: {
+    fontSize: 12,
+    fontFamily: "Inter_500Medium",
+  },
+  alertBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 16,
+    marginTop: 12,
+    padding: 11,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  alertText: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+    flex: 1,
+  },
   listContent: {
     paddingHorizontal: 16,
   },
@@ -228,12 +316,12 @@ const styles = StyleSheet.create({
   },
   empty: {
     alignItems: "center",
-    paddingTop: 60,
-    gap: 12,
+    paddingTop: 40,
+    gap: 10,
     paddingHorizontal: 40,
   },
   emptyTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontFamily: "Inter_600SemiBold",
     textAlign: "center",
   },
