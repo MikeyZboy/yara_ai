@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: policies
+    description: Return policy parsing
 paths:
   /healthz:
     get:
@@ -24,6 +26,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /policies/parse:
+    post:
+      operationId: parseReturnPolicy
+      tags: [policies]
+      summary: Parse return policy for a merchant
+      description: Uses AI to look up and parse the return policy for a given merchant, returning the return window in days
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ParsePolicyRequest"
+      responses:
+        "200":
+          description: Parsed return policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ParsePolicyResponse"
+        "500":
+          description: Failed to parse policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +60,54 @@ components:
           type: string
       required:
         - status
-
+    ParsePolicyRequest:
+      type: object
+      properties:
+        merchant:
+          type: string
+          description: The merchant or store name
+        category:
+          type: string
+          description: Product category (optional, helps with accuracy)
+      required:
+        - merchant
+    ParsePolicyResponse:
+      type: object
+      properties:
+        merchant:
+          type: string
+        returnWindowDays:
+          type: integer
+          description: Number of days for standard returns
+        exchangeWindowDays:
+          type: integer
+          description: Number of days for exchanges (if different)
+        policyHighlights:
+          type: array
+          items:
+            type: string
+          description: Key policy details
+        requiresReceipt:
+          type: boolean
+        requiresOriginalPackaging:
+          type: boolean
+        finalSale:
+          type: boolean
+          description: Whether items are final sale (no returns)
+        notes:
+          type: string
+          description: Additional important notes
+      required:
+        - merchant
+        - returnWindowDays
+        - policyHighlights
+        - requiresReceipt
+        - requiresOriginalPackaging
+        - finalSale
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error

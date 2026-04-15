@@ -14,3 +14,33 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * Uses AI to look up and parse the return policy for a given merchant, returning the return window in days
+ * @summary Parse return policy for a merchant
+ */
+export const ParseReturnPolicyBody = zod.object({
+  merchant: zod.string().describe("The merchant or store name"),
+  category: zod
+    .string()
+    .optional()
+    .describe("Product category (optional, helps with accuracy)"),
+});
+
+export const ParseReturnPolicyResponse = zod.object({
+  merchant: zod.string(),
+  returnWindowDays: zod
+    .number()
+    .describe("Number of days for standard returns"),
+  exchangeWindowDays: zod
+    .number()
+    .optional()
+    .describe("Number of days for exchanges (if different)"),
+  policyHighlights: zod.array(zod.string()).describe("Key policy details"),
+  requiresReceipt: zod.boolean(),
+  requiresOriginalPackaging: zod.boolean(),
+  finalSale: zod
+    .boolean()
+    .describe("Whether items are final sale (no returns)"),
+  notes: zod.string().optional().describe("Additional important notes"),
+});

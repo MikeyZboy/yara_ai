@@ -5,18 +5,26 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
+  MutationFunction,
   QueryFunction,
   QueryKey,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { HealthStatus } from "./api.schemas";
+import type {
+  ErrorResponse,
+  HealthStatus,
+  ParsePolicyRequest,
+  ParsePolicyResponse,
+} from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
-import type { ErrorType } from "../custom-fetch";
+import type { ErrorType, BodyType } from "../custom-fetch";
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -99,3 +107,90 @@ export function useHealthCheck<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * Uses AI to look up and parse the return policy for a given merchant, returning the return window in days
+ * @summary Parse return policy for a merchant
+ */
+export const getParseReturnPolicyUrl = () => {
+  return `/api/policies/parse`;
+};
+
+export const parseReturnPolicy = async (
+  parsePolicyRequest: ParsePolicyRequest,
+  options?: RequestInit,
+): Promise<ParsePolicyResponse> => {
+  return customFetch<ParsePolicyResponse>(getParseReturnPolicyUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(parsePolicyRequest),
+  });
+};
+
+export const getParseReturnPolicyMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof parseReturnPolicy>>,
+    TError,
+    { data: BodyType<ParsePolicyRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof parseReturnPolicy>>,
+  TError,
+  { data: BodyType<ParsePolicyRequest> },
+  TContext
+> => {
+  const mutationKey = ["parseReturnPolicy"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof parseReturnPolicy>>,
+    { data: BodyType<ParsePolicyRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return parseReturnPolicy(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ParseReturnPolicyMutationResult = NonNullable<
+  Awaited<ReturnType<typeof parseReturnPolicy>>
+>;
+export type ParseReturnPolicyMutationBody = BodyType<ParsePolicyRequest>;
+export type ParseReturnPolicyMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Parse return policy for a merchant
+ */
+export const useParseReturnPolicy = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof parseReturnPolicy>>,
+    TError,
+    { data: BodyType<ParsePolicyRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof parseReturnPolicy>>,
+  TError,
+  { data: BodyType<ParsePolicyRequest> },
+  TContext
+> => {
+  return useMutation(getParseReturnPolicyMutationOptions(options));
+};

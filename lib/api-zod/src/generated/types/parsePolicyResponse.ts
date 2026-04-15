@@ -5,16 +5,6 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-export interface HealthStatus {
-  status: string;
-}
-
-export interface ParsePolicyRequest {
-  /** The merchant or store name */
-  merchant: string;
-  /** Product category (optional, helps with accuracy) */
-  category?: string;
-}
 
 export interface ParsePolicyResponse {
   merchant: string;
@@ -30,8 +20,4 @@ export interface ParsePolicyResponse {
   finalSale: boolean;
   /** Additional important notes */
   notes?: string;
-}
-
-export interface ErrorResponse {
-  error: string;
 }
