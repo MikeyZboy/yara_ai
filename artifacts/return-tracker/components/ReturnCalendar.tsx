@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Platform,
   StyleSheet,
@@ -16,6 +16,7 @@ interface ReturnCalendarProps {
   purchases: Purchase[];
   selectedDate: string | null;
   onSelectDate: (date: string | null) => void;
+  jumpToDate?: string | null;
 }
 
 const DAY_LABELS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
@@ -38,11 +39,22 @@ export function ReturnCalendar({
   purchases,
   selectedDate,
   onSelectDate,
+  jumpToDate,
 }: ReturnCalendarProps) {
   const colors = useColors();
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
+
+  useEffect(() => {
+    if (jumpToDate) {
+      const d = new Date(jumpToDate);
+      if (!isNaN(d.getTime())) {
+        setViewYear(d.getFullYear());
+        setViewMonth(d.getMonth());
+      }
+    }
+  }, [jumpToDate]);
 
   const deadlineMap = useMemo(() => {
     const map: Record<string, DotType[]> = {};
@@ -87,7 +99,6 @@ export function ReturnCalendar({
 
   const firstDayOfMonth = new Date(viewYear, viewMonth, 1).getDay();
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
-
   const todayStr = toLocalDateString(today);
 
   const cells: (number | null)[] = [
@@ -106,11 +117,7 @@ export function ReturnCalendar({
   function handleDayPress(day: number) {
     if (Platform.OS !== "web") Haptics.selectionAsync();
     const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    if (selectedDate === dateStr) {
-      onSelectDate(null);
-    } else {
-      onSelectDate(dateStr);
-    }
+    onSelectDate(selectedDate === dateStr ? null : dateStr);
   }
 
   return (
@@ -160,8 +167,6 @@ export function ReturnCalendar({
             const isToday = dateStr === todayStr;
             const isSelected = dateStr === selectedDate;
             const dots = deadlineMap[dateStr] ?? [];
-            const hasDots = dots.length > 0;
-            const topDot = dots[0];
 
             return (
               <TouchableOpacity
@@ -189,33 +194,30 @@ export function ReturnCalendar({
                         : isToday
                         ? colors.primary
                         : colors.foreground,
-                      fontFamily: isToday || isSelected
-                        ? "Inter_700Bold"
-                        : "Inter_400Regular",
+                      fontFamily:
+                        isToday || isSelected
+                          ? "Inter_700Bold"
+                          : "Inter_400Regular",
                     },
                   ]}
                 >
                   {day}
                 </Text>
-                {hasDots ? (
-                  <View style={styles.dotsRow}>
-                    {dots.slice(0, 3).map((dot, i) => (
-                      <View
-                        key={i}
-                        style={[
-                          styles.dot,
-                          {
-                            backgroundColor: isSelected
-                              ? "rgba(255,255,255,0.8)"
-                              : getDotColor(dot),
-                          },
-                        ]}
-                      />
-                    ))}
-                  </View>
-                ) : (
-                  <View style={styles.dotsRow} />
-                )}
+                <View style={styles.dotsRow}>
+                  {dots.slice(0, 3).map((dot, i) => (
+                    <View
+                      key={i}
+                      style={[
+                        styles.dot,
+                        {
+                          backgroundColor: isSelected
+                            ? "rgba(255,255,255,0.8)"
+                            : getDotColor(dot),
+                        },
+                      ]}
+                    />
+                  ))}
+                </View>
               </TouchableOpacity>
             );
           })}
@@ -233,7 +235,7 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     paddingBottom: 10,
     marginHorizontal: 16,
-    marginTop: 12,
+    marginTop: 10,
   },
   monthNav: {
     flexDirection: "row",
