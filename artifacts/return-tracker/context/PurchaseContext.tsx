@@ -7,6 +7,12 @@ import React, {
   useState,
 } from "react";
 
+import {
+  cancelNotificationsForPurchase,
+  scheduleNotificationsForPurchase,
+  syncAllNotifications,
+} from "@/services/notifications";
+
 export type ReturnStatus = "active" | "returned" | "kept" | "expired";
 
 export interface Purchase {
@@ -94,7 +100,7 @@ function makeSeedData(): Purchase[] {
     {
       id: generateId(),
       merchant: "Apple",
-      amount: 1299.00,
+      amount: 1299.0,
       currency: "USD",
       purchaseDate: dateStr(now, 13),
       items: "MacBook Pro 14-inch",
@@ -111,14 +117,15 @@ function makeSeedData(): Purchase[] {
       requiresReceipt: false,
       requiresOriginalPackaging: true,
       finalSale: false,
-      policyNotes: "Opened software cannot be returned. Refurbished items are final sale.",
+      policyNotes:
+        "Opened software cannot be returned. Refurbished items are final sale.",
       status: "active",
       createdAt: new Date().toISOString(),
     },
     {
       id: generateId(),
       merchant: "Nordstrom",
-      amount: 245.00,
+      amount: 245.0,
       currency: "USD",
       purchaseDate: dateStr(now, 20),
       items: "Eileen Fisher Blazer",
@@ -136,7 +143,8 @@ function makeSeedData(): Purchase[] {
       requiresReceipt: false,
       requiresOriginalPackaging: false,
       finalSale: false,
-      policyNotes: "Items marked 'Final Sale' cannot be returned. Gift cards are non-refundable.",
+      policyNotes:
+        "Items marked 'Final Sale' cannot be returned. Gift cards are non-refundable.",
       status: "active",
       createdAt: new Date().toISOString(),
     },
@@ -206,7 +214,8 @@ function makeSeedData(): Purchase[] {
       requiresReceipt: true,
       requiresOriginalPackaging: true,
       finalSale: false,
-      policyNotes: "Activated cell phones and major appliances have different return windows.",
+      policyNotes:
+        "Activated cell phones and major appliances have different return windows.",
       status: "active",
       createdAt: new Date().toISOString(),
     },
@@ -236,14 +245,14 @@ function makeSeedData(): Purchase[] {
     {
       id: generateId(),
       merchant: "IKEA",
-      amount: 279.00,
+      amount: 279.0,
       currency: "USD",
       purchaseDate: dateStr(now, 10),
       items: "BEKANT Standing Desk",
       category: "Furniture",
       accountLabel: "Cash",
       returnWindowDays: 365,
-      returnDeadline: addDays(now, -0),
+      returnDeadline: addDays(now, 0),
       policyHighlights: [
         "365-day return policy for IKEA Family members",
         "Item must be unused and in original packaging",
@@ -286,17 +295,18 @@ export function PurchaseProvider({ children }: { children: React.ReactNode }) {
   async function loadPurchases() {
     try {
       const seeded = await AsyncStorage.getItem(SEEDED_KEY);
+      let loaded: Purchase[];
       if (!seeded) {
-        const seedData = makeSeedData();
-        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(seedData));
+        loaded = makeSeedData();
+        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(loaded));
         await AsyncStorage.setItem(SEEDED_KEY, "true");
-        setPurchases(seedData);
       } else {
         const stored = await AsyncStorage.getItem(STORAGE_KEY);
-        if (stored) {
-          setPurchases(JSON.parse(stored));
-        }
+        loaded = stored ? JSON.parse(stored) : [];
       }
+      setPurchases(loaded);
+      // Sync notifications in the background after loading
+      syncAllNotifications(loaded).catch(() => {});
     } catch (e) {
       console.error("Failed to load purchases", e);
     } finally {
@@ -318,6 +328,7 @@ export function PurchaseProvider({ children }: { children: React.ReactNode }) {
       };
       const updated = [newPurchase, ...purchases];
       await savePurchases(updated);
+      scheduleNotificationsForPurchase(newPurchase).catch(() => {});
     },
     [purchases]
   );
@@ -328,6 +339,14 @@ export function PurchaseProvider({ children }: { children: React.ReactNode }) {
         p.id === id ? { ...p, ...updates } : p
       );
       await savePurchases(updated);
+      const updatedPurchase = updated.find((p) => p.id === id);
+      if (updatedPurchase) {
+        if (updatedPurchase.status !== "active") {
+          cancelNotificationsForPurchase(id).catch(() => {});
+        } else {
+          scheduleNotificationsForPurchase(updatedPurchase).catch(() => {});
+        }
+      }
     },
     [purchases]
   );
@@ -336,6 +355,7 @@ export function PurchaseProvider({ children }: { children: React.ReactNode }) {
     async (id: string) => {
       const updated = purchases.filter((p) => p.id !== id);
       await savePurchases(updated);
+      cancelNotificationsForPurchase(id).catch(() => {});
     },
     [purchases]
   );

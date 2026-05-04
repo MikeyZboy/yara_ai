@@ -1,7 +1,9 @@
 import { Feather } from "@expo/vector-icons";
+import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Platform,
   ScrollView,
   StyleSheet,
@@ -13,15 +15,24 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { PurchaseCard } from "@/components/PurchaseCard";
 import { SectionHeader } from "@/components/SectionHeader";
-import { usePurchases, computeDeadlineStatus } from "@/context/PurchaseContext";
+import { computeDeadlineStatus, usePurchases } from "@/context/PurchaseContext";
+import { useNotificationPermission } from "@/hooks/useNotificationPermission";
+import {
+  getScheduledCount,
+  syncAllNotifications,
+} from "@/services/notifications";
 import { useColors } from "@/hooks/useColors";
 
 export default function AlertsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { urgentPurchases, expiringPurchases, activePurchases } =
+  const { urgentPurchases, expiringPurchases, activePurchases, purchases } =
     usePurchases();
+  const { status: permStatus, loading: permLoading, request } =
+    useNotificationPermission();
+  const [scheduledCount, setScheduledCount] = useState<number | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   const safePurchases = activePurchases.filter((p) => {
     const { daysLeft } = computeDeadlineStatus(p);
@@ -34,20 +45,159 @@ export default function AlertsScreen() {
   const hasAnyAlerts =
     urgentPurchases.length > 0 || expiringPurchases.length > 0;
 
+  useEffect(() => {
+    if (permStatus === "granted") {
+      getScheduledCount().then(setScheduledCount);
+    }
+  }, [permStatus, purchases]);
+
+  async function handleEnableNotifications() {
+    const result = await request();
+    if (result === "granted") {
+      setSyncing(true);
+      await syncAllNotifications(purchases);
+      const count = await getScheduledCount();
+      setScheduledCount(count);
+      setSyncing(false);
+    } else if (result === "denied") {
+      // Already denied — send to settings
+      Linking.openSettings();
+    }
+  }
+
+  async function handleResync() {
+    setSyncing(true);
+    await syncAllNotifications(purchases);
+    const count = await getScheduledCount();
+    setScheduledCount(count);
+    setSyncing(false);
+  }
+
+  const renderNotificationBanner = () => {
+    if (Platform.OS === "web") return null;
+    if (permLoading) return null;
+
+    if (permStatus === "granted") {
+      return (
+        <View
+          style={[
+            styles.notifBanner,
+            { backgroundColor: colors.safe, borderColor: colors.safeBorder },
+          ]}
+        >
+          <View style={styles.notifBannerLeft}>
+            <View
+              style={[
+                styles.notifIconWrap,
+                { backgroundColor: colors.safeForeground + "22" },
+              ]}
+            >
+              <Feather name="bell" size={16} color={colors.safeForeground} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text
+                style={[styles.notifBannerTitle, { color: colors.safeForeground }]}
+              >
+                Notifications active
+              </Text>
+              <Text
+                style={[styles.notifBannerSub, { color: colors.safeForeground }]}
+              >
+                {scheduledCount === null
+                  ? "Loading…"
+                  : scheduledCount === 0
+                  ? "No upcoming reminders scheduled"
+                  : `${scheduledCount} reminder${scheduledCount !== 1 ? "s" : ""} scheduled`}
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            onPress={handleResync}
+            activeOpacity={0.7}
+            style={[
+              styles.notifAction,
+              { backgroundColor: colors.safeForeground + "22" },
+            ]}
+            disabled={syncing}
+          >
+            {syncing ? (
+              <ActivityIndicator size="small" color={colors.safeForeground} />
+            ) : (
+              <Feather name="refresh-cw" size={14} color={colors.safeForeground} />
+            )}
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    return (
+      <View
+        style={[
+          styles.notifBanner,
+          { backgroundColor: colors.expiring, borderColor: colors.expiringBorder },
+        ]}
+      >
+        <View style={styles.notifBannerLeft}>
+          <View
+            style={[
+              styles.notifIconWrap,
+              { backgroundColor: colors.expiringForeground + "22" },
+            ]}
+          >
+            <Feather
+              name="bell-off"
+              size={16}
+              color={colors.expiringForeground}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text
+              style={[
+                styles.notifBannerTitle,
+                { color: colors.expiringForeground },
+              ]}
+            >
+              {permStatus === "undetermined"
+                ? "Enable return reminders"
+                : "Notifications are off"}
+            </Text>
+            <Text
+              style={[
+                styles.notifBannerSub,
+                { color: colors.expiringForeground },
+              ]}
+            >
+              {permStatus === "undetermined"
+                ? "Get alerts 7, 3, and 1 day before each deadline"
+                : "Turn on notifications in Settings to get deadline reminders"}
+            </Text>
+          </View>
+        </View>
+        <TouchableOpacity
+          onPress={handleEnableNotifications}
+          activeOpacity={0.8}
+          style={[
+            styles.notifAction,
+            { backgroundColor: colors.expiringForeground },
+          ]}
+        >
+          <Text style={[styles.notifActionText, { color: "#fff" }]}>
+            {permStatus === "undetermined" ? "Enable" : "Settings"}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View
         style={[
           styles.topBar,
-          {
-            paddingTop: topPadding + 12,
-            backgroundColor: colors.background,
-          },
+          { paddingTop: topPadding + 12, backgroundColor: colors.background },
         ]}
       >
-        <Text style={[styles.title, { color: colors.foreground }]}>
-          Alerts
-        </Text>
+        <Text style={[styles.title, { color: colors.foreground }]}>Alerts</Text>
       </View>
 
       <ScrollView
@@ -57,30 +207,26 @@ export default function AlertsScreen() {
           { paddingBottom: bottomPadding + 100 },
         ]}
       >
-        {!hasAnyAlerts && (
+        {/* Notification permission banner */}
+        {renderNotificationBanner()}
+
+        {/* All clear */}
+        {!hasAnyAlerts && activePurchases.length > 0 && (
           <View
             style={[
               styles.allClearBanner,
-              {
-                backgroundColor: colors.safe,
-                borderColor: colors.safeBorder,
-              },
+              { backgroundColor: colors.card, borderColor: colors.border },
             ]}
           >
-            <Feather name="shield" size={24} color={colors.safeForeground} />
+            <Feather name="shield" size={24} color={colors.primary} />
             <View style={{ flex: 1 }}>
-              <Text
-                style={[
-                  styles.allClearTitle,
-                  { color: colors.safeForeground },
-                ]}
-              >
+              <Text style={[styles.allClearTitle, { color: colors.foreground }]}>
                 All clear
               </Text>
               <Text
                 style={[
                   styles.allClearText,
-                  { color: colors.safeForeground },
+                  { color: colors.mutedForeground },
                 ]}
               >
                 No purchases expiring within 2 weeks
@@ -89,6 +235,7 @@ export default function AlertsScreen() {
           </View>
         )}
 
+        {/* Urgent — ≤ 3 days */}
         {urgentPurchases.length > 0 && (
           <View>
             <SectionHeader
@@ -103,6 +250,7 @@ export default function AlertsScreen() {
           </View>
         )}
 
+        {/* Expiring — 4-14 days */}
         {expiringPurchases.length > 0 && (
           <View>
             <SectionHeader
@@ -117,6 +265,7 @@ export default function AlertsScreen() {
           </View>
         )}
 
+        {/* Safe — > 14 days */}
         {safePurchases.length > 0 && (
           <View>
             <SectionHeader title="Safe" count={safePurchases.length} />
@@ -128,6 +277,7 @@ export default function AlertsScreen() {
           </View>
         )}
 
+        {/* Empty state */}
         {activePurchases.length === 0 && (
           <View style={styles.empty}>
             <Feather name="bell" size={48} color={colors.mutedForeground} />
@@ -140,10 +290,7 @@ export default function AlertsScreen() {
               Track purchases to get return deadline alerts
             </Text>
             <TouchableOpacity
-              style={[
-                styles.addButton,
-                { backgroundColor: colors.primary },
-              ]}
+              style={[styles.addButton, { backgroundColor: colors.primary }]}
               onPress={() => router.push("/add-purchase")}
               activeOpacity={0.8}
             >
@@ -164,9 +311,7 @@ export default function AlertsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   topBar: {
     paddingHorizontal: 20,
     paddingBottom: 12,
@@ -177,7 +322,58 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 16,
+    gap: 0,
   },
+  // Notification banner
+  notifBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginTop: 16,
+    gap: 10,
+  },
+  notifBannerLeft: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  notifIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  notifBannerTitle: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+    marginBottom: 2,
+  },
+  notifBannerSub: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    lineHeight: 17,
+  },
+  notifAction: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    minWidth: 36,
+    minHeight: 36,
+  },
+  notifActionText: {
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+  },
+  // All clear
   allClearBanner: {
     flexDirection: "row",
     alignItems: "center",
@@ -199,6 +395,7 @@ const styles = StyleSheet.create({
   cards: {
     gap: 0,
   },
+  // Empty
   empty: {
     alignItems: "center",
     paddingTop: 60,
