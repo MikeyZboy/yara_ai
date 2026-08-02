@@ -64,7 +64,7 @@ export function ReturnCalendar({
       const key = toLocalDateString(deadline);
       const { daysLeft } = computeDeadlineStatus(p);
       const dot: DotType =
-        daysLeft <= 3 ? "urgent" : daysLeft <= 14 ? "expiring" : "safe";
+        daysLeft <= 3 && daysLeft >= 0 ? "urgent" : daysLeft > 3 && daysLeft <= 14 ? "expiring" : "safe";
       if (!map[key]) map[key] = [];
       map[key].push(dot);
     }

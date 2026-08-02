@@ -14,8 +14,16 @@ router.post("/parse", async (req, res) => {
     category?: string;
   };
 
-  if (!merchant) {
-    res.status(400).json({ error: "merchant is required" });
+  if (!merchant || typeof merchant !== "string") {
+    res.status(400).json({ error: "merchant is required and must be a string" });
+    return;
+  }
+  if (merchant.trim().length > 200) {
+    res.status(400).json({ error: "merchant name is too long" });
+    return;
+  }
+  if (category !== undefined && (typeof category !== "string" || category.length > 100)) {
+    res.status(400).json({ error: "category must be a string under 100 characters" });
     return;
   }
 
@@ -49,6 +57,26 @@ Respond ONLY with valid JSON, no markdown, no explanation.`;
     }
 
     const parsed = JSON.parse(content);
+
+    // Validate critical fields before returning to the client
+    const returnWindowDays = Number(parsed.returnWindowDays);
+    if (!Number.isFinite(returnWindowDays) || returnWindowDays <= 0) {
+      res.status(500).json({ error: "AI returned an invalid return window" });
+      return;
+    }
+    parsed.returnWindowDays = Math.round(returnWindowDays);
+
+    if (parsed.exchangeWindowDays !== undefined) {
+      const exchangeWindowDays = Number(parsed.exchangeWindowDays);
+      parsed.exchangeWindowDays = Number.isFinite(exchangeWindowDays) && exchangeWindowDays > 0
+        ? Math.round(exchangeWindowDays)
+        : parsed.returnWindowDays;
+    }
+
+    if (!Array.isArray(parsed.policyHighlights)) {
+      parsed.policyHighlights = [];
+    }
+
     res.json(parsed);
   } catch (err) {
     req.log.error({ err }, "Failed to parse return policy");

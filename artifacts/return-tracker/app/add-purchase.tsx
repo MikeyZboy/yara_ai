@@ -43,8 +43,15 @@ export default function AddPurchaseScreen() {
   function isValidDate(dateStr: string): boolean {
     const parts = dateStr.split("-");
     if (parts.length !== 3) return false;
-    const d = new Date(dateStr);
-    return !isNaN(d.getTime());
+    const [y, m, d] = parts.map(Number);
+    if (!y || !m || !d) return false;
+    // Construct in local time and verify components didn't roll over (e.g. Feb 31)
+    const date = new Date(y, m - 1, d);
+    return (
+      date.getFullYear() === y &&
+      date.getMonth() === m - 1 &&
+      date.getDate() === d
+    );
   }
 
   async function handleSave() {
@@ -70,7 +77,9 @@ export default function AddPurchaseScreen() {
       const policy = await parsePolicy(merchant.trim(), category.trim() || undefined);
 
       const returnWindowDays = policy?.returnWindowDays ?? 30;
-      const purchaseDateObj = new Date(purchaseDate);
+      // Parse date components explicitly to avoid UTC-vs-local shift
+      const [py, pm, pd] = purchaseDate.split("-").map(Number);
+      const purchaseDateObj = new Date(py, pm - 1, pd);
       const returnDeadlineObj = new Date(purchaseDateObj);
       returnDeadlineObj.setDate(returnDeadlineObj.getDate() + returnWindowDays);
 

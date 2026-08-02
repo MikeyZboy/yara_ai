@@ -68,11 +68,15 @@ export default function PurchaseDetailScreen() {
     );
   }
 
-  function handleStatusChange(newStatus: ReturnStatus) {
+  async function handleStatusChange(newStatus: ReturnStatus) {
     if (Platform.OS !== "web") {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
-    updatePurchase(purchase!.id, { status: newStatus });
+    try {
+      await updatePurchase(purchase!.id, { status: newStatus });
+    } catch {
+      Alert.alert("Error", "Failed to update purchase. Please try again.");
+    }
   }
 
   function showStatusPicker() {
@@ -107,12 +111,16 @@ export default function PurchaseDetailScreen() {
         {
           text: "Delete",
           style: "destructive",
-          onPress: () => {
+          onPress: async () => {
             if (Platform.OS !== "web") {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
             }
-            deletePurchase(purchase!.id);
-            router.back();
+            try {
+              await deletePurchase(purchase!.id);
+              router.back();
+            } catch {
+              Alert.alert("Error", "Failed to delete purchase. Please try again.");
+            }
           },
         },
       ]
@@ -180,12 +188,22 @@ export default function PurchaseDetailScreen() {
         {!isActive && (
           <View style={[styles.statusCard, { backgroundColor: colors.muted, borderColor: colors.border }]}>
             <Feather
-              name={purchase.status === "returned" ? "check-circle" : "package"}
+              name={
+                purchase.status === "returned"
+                  ? "check-circle"
+                  : purchase.status === "expired"
+                  ? "clock"
+                  : "package"
+              }
               size={20}
               color={colors.mutedForeground}
             />
             <Text style={[styles.statusCardText, { color: colors.mutedForeground }]}>
-              {purchase.status === "returned" ? "Item returned" : "Item kept"}
+              {purchase.status === "returned"
+                ? "Item returned"
+                : purchase.status === "expired"
+                ? "Return window expired"
+                : "Item kept"}
             </Text>
           </View>
         )}

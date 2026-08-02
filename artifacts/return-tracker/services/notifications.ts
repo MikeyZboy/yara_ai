@@ -24,17 +24,24 @@ if (Platform.OS !== "web") {
 export async function requestNotificationPermission(): Promise<NotificationPermissionStatus> {
   if (Platform.OS === "web") return "denied";
 
-  const { status: existing } = await Notifications.getPermissionsAsync();
-  if (existing === "granted") return "granted";
-
-  const { status } = await Notifications.requestPermissionsAsync();
-  return status as NotificationPermissionStatus;
+  try {
+    const { status: existing } = await Notifications.getPermissionsAsync();
+    if (existing === "granted") return "granted";
+    const { status } = await Notifications.requestPermissionsAsync();
+    return status as NotificationPermissionStatus;
+  } catch {
+    return "denied";
+  }
 }
 
 export async function getNotificationPermission(): Promise<NotificationPermissionStatus> {
   if (Platform.OS === "web") return "denied";
-  const { status } = await Notifications.getPermissionsAsync();
-  return status as NotificationPermissionStatus;
+  try {
+    const { status } = await Notifications.getPermissionsAsync();
+    return status as NotificationPermissionStatus;
+  } catch {
+    return "denied";
+  }
 }
 
 // Returns a list of upcoming trigger timestamps (ms) for a purchase's reminders.

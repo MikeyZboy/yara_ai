@@ -34,8 +34,17 @@ export function usePolicyParser() {
       if (!response.ok) {
         throw new Error("Failed to fetch policy");
       }
-      const data = (await response.json()) as PolicyResult;
-      return data;
+      const data = await response.json();
+      // Basic runtime validation — guard against malformed AI responses
+      if (
+        typeof data !== "object" ||
+        data === null ||
+        typeof data.returnWindowDays !== "number" ||
+        data.returnWindowDays <= 0
+      ) {
+        throw new Error("Invalid policy response shape");
+      }
+      return data as PolicyResult;
     } catch (e) {
       setError("Could not load return policy. Using default 30-day window.");
       return null;
