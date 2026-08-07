@@ -36,12 +36,24 @@ export interface Purchase {
   createdAt: string;
 }
 
+export interface ExchangeStatus {
+  daysLeft: number;
+  isAvailable: boolean;
+  isOutsideReturnWindow: boolean;
+  deadline: string;
+}
+
 interface PurchaseContextValue {
   purchases: Purchase[];
+  favoriteStores: string[];
   loading: boolean;
   addPurchase: (purchase: Omit<Purchase, "id" | "createdAt">) => Promise<void>;
   updatePurchase: (id: string, updates: Partial<Purchase>) => Promise<void>;
   deletePurchase: (id: string) => Promise<void>;
+  addFavoriteStore: (merchant: string) => Promise<void>;
+  removeFavoriteStore: (merchant: string) => Promise<void>;
+  toggleFavoriteStore: (merchant: string) => Promise<void>;
+  isFavoriteStore: (merchant: string) => boolean;
   getPurchase: (id: string) => Purchase | undefined;
   urgentPurchases: Purchase[];
   expiringPurchases: Purchase[];
@@ -52,6 +64,7 @@ const PurchaseContext = createContext<PurchaseContextValue | null>(null);
 
 const STORAGE_KEY = "@return_tracker_purchases";
 const SEEDED_KEY = "@return_tracker_seeded";
+const FAVORITE_STORES_KEY = "@return_tracker_favorite_stores";
 
 function generateId(): string {
   return Date.now().toString() + Math.random().toString(36).substr(2, 9);
@@ -67,6 +80,12 @@ function dateStr(base: Date, daysAgo: number): string {
   const d = new Date(base);
   d.setDate(d.getDate() - daysAgo);
   return d.toISOString().split("T")[0];
+}
+
+function parseDateOnly(dateString: string): Date {
+  const [year, month, day] = dateString.split("-").map(Number);
+  if (year && month && day) return new Date(year, month - 1, day);
+  return new Date(dateString);
 }
 
 function makeSeedData(): Purchase[] {
@@ -284,8 +303,36 @@ export function computeDeadlineStatus(purchase: Purchase): {
   };
 }
 
+export function computeExchangeStatus(
+  purchase: Purchase
+): ExchangeStatus | null {
+  if (
+    !purchase.exchangeWindowDays ||
+    !Number.isFinite(purchase.exchangeWindowDays) ||
+    purchase.exchangeWindowDays <= 0
+  ) {
+    return null;
+  }
+
+  const deadline = parseDateOnly(purchase.purchaseDate);
+  deadline.setDate(deadline.getDate() + purchase.exchangeWindowDays);
+  const daysLeft = Math.ceil(
+    (deadline.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+  );
+
+  return {
+    daysLeft,
+    isAvailable: daysLeft >= 0,
+    isOutsideReturnWindow:
+      new Date().getTime() > new Date(purchase.returnDeadline).getTime() &&
+      daysLeft >= 0,
+    deadline: deadline.toISOString(),
+  };
+}
+
 export function PurchaseProvider({ children }: { children: React.ReactNode }) {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
+  const [favoriteStores, setFavoriteStores] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -295,6 +342,18 @@ export function PurchaseProvider({ children }: { children: React.ReactNode }) {
   async function loadPurchases() {
     try {
       const seeded = await AsyncStorage.getItem(SEEDED_KEY);
+      const storedFavorites = await AsyncStorage.getItem(FAVORITE_STORES_KEY);
+      if (storedFavorites) {
+        const parsedFavorites: unknown = JSON.parse(storedFavorites);
+        if (Array.isArray(parsedFavorites)) {
+          setFavoriteStores(
+            parsedFavorites.filter(
+              (store): store is string =>
+                typeof store === "string" && store.trim().length > 0
+            )
+          );
+        }
+      }
       let loaded: Purchase[];
       if (!seeded) {
         loaded = makeSeedData();
@@ -360,6 +419,54 @@ export function PurchaseProvider({ children }: { children: React.ReactNode }) {
     [purchases]
   );
 
+  async function persistFavoriteStores(updated: string[]): Promise<void> {
+    await AsyncStorage.setItem(FAVORITE_STORES_KEY, JSON.stringify(updated));
+    setFavoriteStores(updated);
+  }
+
+  const addFavoriteStore = useCallback(async (merchant: string) => {
+    const normalized = merchant.trim();
+    if (!normalized) return;
+
+    const existing = favoriteStores.find(
+      (store) => store.toLowerCase() === normalized.toLowerCase()
+    );
+    if (existing) return;
+    const updated = [...favoriteStores, normalized].sort((a, b) =>
+      a.localeCompare(b)
+    );
+    await persistFavoriteStores(updated);
+  }, [favoriteStores]);
+
+  const removeFavoriteStore = useCallback(async (merchant: string) => {
+    const updated = favoriteStores.filter(
+      (store) => store.toLowerCase() !== merchant.toLowerCase()
+    );
+    await persistFavoriteStores(updated);
+  }, [favoriteStores]);
+
+  const toggleFavoriteStore = useCallback(
+    async (merchant: string) => {
+      const existing = favoriteStores.some(
+        (store) => store.toLowerCase() === merchant.trim().toLowerCase()
+      );
+      if (existing) {
+        await removeFavoriteStore(merchant);
+      } else {
+        await addFavoriteStore(merchant);
+      }
+    },
+    [addFavoriteStore, favoriteStores, removeFavoriteStore]
+  );
+
+  const isFavoriteStore = useCallback(
+    (merchant: string) =>
+      favoriteStores.some(
+        (store) => store.toLowerCase() === merchant.trim().toLowerCase()
+      ),
+    [favoriteStores]
+  );
+
   const getPurchase = useCallback(
     (id: string) => purchases.find((p) => p.id === id),
     [purchases]
@@ -381,10 +488,15 @@ export function PurchaseProvider({ children }: { children: React.ReactNode }) {
     <PurchaseContext.Provider
       value={{
         purchases,
+        favoriteStores,
         loading,
         addPurchase,
         updatePurchase,
         deletePurchase,
+        addFavoriteStore,
+        removeFavoriteStore,
+        toggleFavoriteStore,
+        isFavoriteStore,
         getPurchase,
         urgentPurchases,
         expiringPurchases,

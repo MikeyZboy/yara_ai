@@ -10,7 +10,12 @@ import {
   View,
 } from "react-native";
 
-import { Purchase, computeDeadlineStatus } from "@/context/PurchaseContext";
+import {
+  Purchase,
+  computeDeadlineStatus,
+  computeExchangeStatus,
+  usePurchases,
+} from "@/context/PurchaseContext";
 import { useColors } from "@/hooks/useColors";
 
 interface PurchaseCardProps {
@@ -37,6 +42,9 @@ export function PurchaseCard({ purchase }: PurchaseCardProps) {
   const colors = useColors();
   const router = useRouter();
   const { daysLeft, isUrgent, isExpiring } = computeDeadlineStatus(purchase);
+  const exchangeStatus = computeExchangeStatus(purchase);
+  const { toggleFavoriteStore, isFavoriteStore } = usePurchases();
+  const isFavorite = isFavoriteStore(purchase.merchant);
 
   function getStatusColor() {
     if (purchase.status === "returned")
@@ -79,7 +87,10 @@ export function PurchaseCard({ purchase }: PurchaseCardProps) {
         if (Platform.OS !== "web") {
           Haptics.selectionAsync();
         }
-        router.push(`/purchase/${purchase.id}` as `/${string}`);
+        router.push({
+          pathname: "/purchase/[id]",
+          params: { id: purchase.id },
+        });
       }}
       activeOpacity={0.7}
     >
@@ -104,6 +115,26 @@ export function PurchaseCard({ purchase }: PurchaseCardProps) {
               {formatDate(purchase.purchaseDate)}
             </Text>
           </View>
+          <TouchableOpacity
+            onPress={(event) => {
+              event.stopPropagation();
+              if (Platform.OS !== "web") Haptics.selectionAsync();
+              void toggleFavoriteStore(purchase.merchant);
+            }}
+            accessibilityLabel={
+              isFavorite
+                ? `Remove ${purchase.merchant} from favorite stores`
+                : `Add ${purchase.merchant} to favorite stores`
+            }
+            activeOpacity={0.7}
+            style={styles.favoriteButton}
+          >
+            <Feather
+              name={isFavorite ? "star" : "star"}
+              size={17}
+              color={isFavorite ? colors.warning : colors.mutedForeground}
+            />
+          </TouchableOpacity>
         </View>
         <Text style={[styles.amount, { color: colors.foreground }]}>
           {formatCurrency(purchase.amount, purchase.currency)}
@@ -140,20 +171,48 @@ export function PurchaseCard({ purchase }: PurchaseCardProps) {
           <View />
         )}
 
-        <View
-          style={[
-            styles.statusChip,
-            { backgroundColor: statusColor.bg },
-          ]}
-        >
-          <Feather
-            name={getStatusIcon() as any}
-            size={11}
-            color={statusColor.fg}
-          />
-          <Text style={[styles.statusText, { color: statusColor.fg }]}>
-            {getStatusText()}
-          </Text>
+        <View style={styles.footerRight}>
+          {purchase.status === "active" &&
+          purchase.exchangeWindowDays &&
+          purchase.exchangeWindowDays > purchase.returnWindowDays &&
+          exchangeStatus?.isAvailable ? (
+            <View
+              style={[
+                styles.exchangeChip,
+                {
+                  backgroundColor: exchangeStatus.isOutsideReturnWindow
+                    ? colors.secondary
+                    : colors.muted,
+                },
+              ]}
+            >
+              <Feather
+                name="repeat"
+                size={11}
+                color={colors.primary}
+              />
+              <Text style={[styles.exchangeText, { color: colors.primary }]}>
+                {exchangeStatus.isOutsideReturnWindow
+                  ? `Exchange ${exchangeStatus.daysLeft}d`
+                  : `Exchangeable`}
+              </Text>
+            </View>
+          ) : null}
+          <View
+            style={[
+              styles.statusChip,
+              { backgroundColor: statusColor.bg },
+            ]}
+          >
+            <Feather
+              name={getStatusIcon() as any}
+              size={11}
+              color={statusColor.fg}
+            />
+            <Text style={[styles.statusText, { color: statusColor.fg }]}>
+              {getStatusText()}
+            </Text>
+          </View>
         </View>
       </View>
     </TouchableOpacity>
@@ -179,6 +238,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
     flex: 1,
+  },
+  favoriteButton: {
+    padding: 6,
+    marginRight: 2,
   },
   merchantIcon: {
     width: 36,
@@ -213,6 +276,11 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginTop: 4,
   },
+  footerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
   accountChip: {
     flexDirection: "row",
     alignItems: "center",
@@ -234,6 +302,18 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   statusText: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+  },
+  exchangeChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  exchangeText: {
     fontSize: 11,
     fontFamily: "Inter_600SemiBold",
   },

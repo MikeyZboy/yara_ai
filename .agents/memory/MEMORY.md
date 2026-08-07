@@ -1,0 +1,1 @@
+- [Favorite stores privacy boundary](favorite-stores.md) — favorites are currently device-local; advertising, profiling, and trend analytics require explicit future product decisions.
