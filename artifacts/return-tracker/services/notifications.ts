@@ -194,7 +194,7 @@ export async function getScheduledCount(): Promise<number> {
 }
 
 export async function getScheduledNotifications(): Promise<
-  Notifications.ScheduledNotificationObject[]
+  Awaited<ReturnType<typeof Notifications.getAllScheduledNotificationsAsync>>
 > {
   if (Platform.OS === "web") return [];
   return Notifications.getAllScheduledNotificationsAsync();
