@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Return Tracker",
-    "slug": "return-tracker",
+    "name": "Yara",
+    "slug": "yara",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "return-tracker",
+    "scheme": "yara",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -14,9 +14,12 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "bundleIdentifier": "com.yara.app"
     },
-    "android": {},
+    "android": {
+      "package": "com.yara.app"
+    },
     "web": {
       "favicon": "./assets/images/icon.png"
     },
