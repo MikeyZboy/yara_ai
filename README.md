@@ -54,12 +54,22 @@ pnpm --filter @workspace/api-server run dev
 - `pnpm run build` - Type-check and build all packages
 - `pnpm --filter @workspace/api-spec run codegen` - Regenerate API client/types
 
+## Deployment
+
+The policy API runs on Railway and calls OpenAI directly. See [`docs/DEPLOY.md`](docs/DEPLOY.md) for settings, environment variables, rollbacks and local setup.
+
 ## Environment Variables
 
-The API policy parsing flow expects these variables:
+API (`artifacts/api-server`):
 
-- `AI_INTEGRATIONS_OPENAI_BASE_URL`
-- `AI_INTEGRATIONS_OPENAI_API_KEY`
+- `OPENAI_API_KEY` (required)
+- `NODE_ENV=production` in production
+- `OPENAI_MODEL` (optional, defaults to `gpt-5-mini`)
+- `ALLOWED_ORIGINS` (optional, comma-separated web origins)
+
+App (`artifacts/return-tracker`):
+
+- `EXPO_PUBLIC_API_URL`: base URL of the API
 
 ## License
 
